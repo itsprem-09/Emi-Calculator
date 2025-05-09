@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/emi_model.dart';
 import '../utils/formatter.dart';
+import 'package:share_plus/share_plus.dart';
 
 class Compare extends StatefulWidget {
   const Compare({super.key});
@@ -137,6 +138,28 @@ class _CompareState extends State<Compare> {
       _emi1 = _emi2 = _interest1 = _interest2 = _total1 = _total2 = null;
       _hasCalculated = false;
     });
+  }
+
+  void _shareResult() {
+    if (!_hasCalculated) return;
+    final amount1 = Formatter.formatCurrency(_parseAmount(_amount1Controller));
+    final rate1 = _rate1Controller.text;
+    final tenure1 = int.tryParse(_tenure1Controller.text) ?? 0;
+    final tenureStr1 = '$tenure1 Months';
+    final emi1 = Formatter.formatCurrency(_emi1 ?? 0);
+    final totalInterest1 = Formatter.formatCurrency(_interest1 ?? 0);
+    final totalPayment1 = Formatter.formatCurrency(_total1 ?? 0);
+
+    final amount2 = Formatter.formatCurrency(_parseAmount(_amount2Controller));
+    final rate2 = _rate2Controller.text;
+    final tenure2 = int.tryParse(_tenure2Controller.text) ?? 0;
+    final tenureStr2 = '$tenure2 Months';
+    final emi2 = Formatter.formatCurrency(_emi2 ?? 0);
+    final totalInterest2 = Formatter.formatCurrency(_interest2 ?? 0);
+    final totalPayment2 = Formatter.formatCurrency(_total2 ?? 0);
+
+    final message = '''Loan Comparison\n\nLoan 1:\nLoan Amount: $amount1\nInterest Rate: $rate1 %\nLoan Tenure : $tenureStr1\nEMI: $emi1\nTotal Interest Payable: $totalInterest1\nTotal Payable Amount : $totalPayment1\n\nLoan 2:\nLoan Amount: $amount2\nInterest Rate: $rate2 %\nLoan Tenure : $tenureStr2\nEMI: $emi2\nTotal Interest Payable: $totalInterest2\nTotal Payable Amount : $totalPayment2\n\nDownload 4.6★ rated App for EMI Calculation, Loan comparison with advanced feature like Processing Fees, GST on Interest, Fixed Rate etc.\nCalculated Using\nAndroid: http://diet.vc/a_aemi\niPhone: http://diet.vc/a_iemi''';
+    Share.share(message, subject: 'Loan Comparison');
   }
 
   @override
@@ -509,11 +532,7 @@ class _CompareState extends State<Compare> {
                         width: buttonWidth,
                         height: buttonHeight,
                         child: ElevatedButton.icon(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Share functionality not implemented')),
-                            );
-                          },
+                          onPressed: _shareResult,
                           icon: const Icon(Icons.share, color: Colors.white, size: 20),
                           label: const Text('Share', style: TextStyle(color: Colors.white, fontSize: 12)),
                           style: ElevatedButton.styleFrom(

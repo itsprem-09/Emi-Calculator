@@ -3,9 +3,11 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:math' as math;
+import 'package:share_plus/share_plus.dart';
 
 import '../models/emi_model.dart';
 import '../utils/formatter.dart';
+import 'schedule.dart';
 
 class Emi extends StatefulWidget {
   const Emi({super.key});
@@ -232,79 +234,73 @@ class _EmiState extends State<Emi> with SingleTickerProviderStateMixin {
     final loanAmount = _parseLoanAmount();
     final interestRate = double.parse(_interestRateController.text);
     final tenure = int.parse(_tenureController.text);
-
     final emiModel = EmiModel(
       loanAmount: loanAmount,
       interestRate: interestRate,
       tenure: tenure,
       isYears: _isYears,
     );
-
-    final schedule = emiModel.generateAmortizationSchedule();
-
+    final scheduleMap = emiModel.generateAmortizationSchedule();
+    // Prepare detailed schedule data for the table
+    double remainingPrincipal = loanAmount;
+    final monthlyInterestRate = (interestRate / 12) / 100;
+    final tenureInMonths = _isYears ? tenure * 12 : tenure;
+    final emi = emiModel.monthlyEmi;
+    final List<Map<String, dynamic>> scheduleData = [];
+    for (int i = 1; i <= tenureInMonths; i++) {
+      final interest = remainingPrincipal * monthlyInterestRate;
+      final principal = emi - interest;
+      remainingPrincipal -= principal;
+      scheduleData.add({
+        'principal': principal > 0 ? principal : 0,
+        'interest': interest > 0 ? interest : 0,
+        'outstanding': remainingPrincipal > 0 ? remainingPrincipal : 0,
+      });
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      backgroundColor: Colors.transparent,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.92,
+        child: ScheduleScreen(
+          scheduleData: scheduleData,
+          principal: loanAmount,
+          interestRate: interestRate,
+          tenureMonths: tenureInMonths,
+          emi: emi,
+          startDate: DateTime.now(),
+          isYearly: false,
+        ),
       ),
-      builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Amortization Schedule',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                ],
-              ),
-              const Divider(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Month',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Text('Remaining Principal',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: schedule.length,
-                  itemBuilder: (context, index) {
-                    final month = (index + 1).toString();
-                    final remainingPrincipal = schedule[month] ?? 0.0;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(month),
-                          Text(Formatter.formatCurrency(remainingPrincipal)),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 
+  void _shareResult() {
+    if (!_hasCalculated) return;
+    final loanAmount = Formatter.formatCurrency(_parseLoanAmount());
+    final interestRate = _interestRateController.text;
+    final tenure = int.tryParse(_tenureController.text) ?? 0;
+    final tenureStr = _isYears ? '$tenure Years (${tenure * 12} Months)' : '$tenure Months';
+    final emi = Formatter.formatCurrency(_emiAmount);
+    final totalInterest = Formatter.formatCurrency(_totalInterest);
+    final totalPayment = Formatter.formatCurrency(_totalPayment);
+    final message = '''EMI Calculation
+
+Loan Amount: $loanAmount
+Interest Rate: $interestRate %
+Loan Tenure : $tenureStr
+
+EMI: $emi
+Total Interest Payable: $totalInterest
+Total Payable Amount : $totalPayment
+
+Download 4.6★ rated App for EMI Calculation, Loan comparison with advanced feature like Processing Fees, GST on Interest, Fixed Rate etc.
+Calculated Using
+Android: http://diet.vc/a_aemi
+iPhone: http://diet.vc/a_iemi''';
+    Share.share(message, subject: 'EMI Calculation');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -691,13 +687,7 @@ class _EmiState extends State<Emi> with SingleTickerProviderStateMixin {
                           width: buttonWidth,
                           height: buttonHeight,
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Share functionality not implemented'),
-                                ),
-                              );
-                            },
+                            onPressed: _shareResult,
                             icon: const Icon(Icons.share, color: Colors.white, size: 20),
                             label: const Text(
                               'Share',
@@ -761,27 +751,12 @@ class _EmiState extends State<Emi> with SingleTickerProviderStateMixin {
         children: [
           FittedBox(
             fit: BoxFit.scaleDown,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Flexible(
-                  child: Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 4),
-                const Icon(
-                  Icons.add,
-                  size: 14,
-                  color: Colors.grey,
-                ),
-              ],
+            child: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
             ),
           ),
           const SizedBox(height: 4),

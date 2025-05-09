@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 import '../utils/formatter.dart';
 import '../models/emi_model.dart';
+import 'schedule.dart';
+import 'package:share_plus/share_plus.dart';
 
 class Roi extends StatefulWidget {
   const Roi({super.key});
@@ -244,69 +246,55 @@ class _RoiState extends State<Roi> {
     final emi = _emi;
     final principal = _principal;
     final rate = _rate;
-    final isYears = _isYears;
     if (principal <= 0 || rate <= 0 || tenureMonths <= 0) return;
-    // Use EmiModel for amortization schedule
     final emiModel = EmiModel(
       loanAmount: principal,
       interestRate: rate,
       tenure: tenureMonths,
       isYears: false,
     );
-    final schedule = emiModel.generateAmortizationSchedule();
+    final monthlyInterestRate = (rate / 12) / 100;
+    double remainingPrincipal = principal;
+    final List<Map<String, dynamic>> scheduleData = [];
+    for (int i = 1; i <= tenureMonths; i++) {
+      final interest = remainingPrincipal * monthlyInterestRate;
+      final principalPaid = emi - interest;
+      remainingPrincipal -= principalPaid;
+      scheduleData.add({
+        'principal': principalPaid > 0 ? principalPaid : 0,
+        'interest': interest > 0 ? interest : 0,
+        'outstanding': remainingPrincipal > 0 ? remainingPrincipal : 0,
+      });
+    }
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      backgroundColor: Colors.transparent,
+      builder: (context) => SizedBox(
+        height: MediaQuery.of(context).size.height * 0.92,
+        child: ScheduleScreen(
+          scheduleData: scheduleData,
+          principal: principal,
+          interestRate: rate,
+          tenureMonths: tenureMonths,
+          emi: emi,
+          startDate: DateTime.now(),
+          isYearly: false,
+        ),
       ),
-      builder: (BuildContext context) {
-        return Container(
-          height: MediaQuery.of(context).size.height * 0.7,
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Amortization Schedule', style: Theme.of(context).textTheme.titleLarge),
-                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
-                ],
-              ),
-              const Divider(),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Month', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const Text('Remaining Principal', style: TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: schedule.length,
-                  itemBuilder: (context, index) {
-                    final month = (index + 1).toString();
-                    final remainingPrincipal = schedule[month] ?? 0.0;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 4.0),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(month),
-                          Text(Formatter.formatCurrency(remainingPrincipal)),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
+  }
+
+  void _shareResult() {
+    if (!_hasCalculated) return;
+    final loanAmount = Formatter.formatCurrency(_principal);
+    final emi = Formatter.formatCurrency(_emi);
+    final rate = _rate.isNaN ? '--' : _rate.toStringAsFixed(2);
+    final tenureStr = _isYears ? '$_tenure Years (${_tenure * 12} Months)' : '$_tenure Months';
+    final totalInterest = Formatter.formatCurrency(_interest);
+    final totalPayment = Formatter.formatCurrency(_total);
+    final message = '''EMI Calculation\n\nLoan Amount: $loanAmount\nInterest Rate: $rate %\nLoan Tenure : $tenureStr\n\nEMI: $emi\nTotal Interest Payable: $totalInterest\nTotal Payable Amount : $totalPayment\n\nDownload 4.6★ rated App for EMI Calculation, Loan comparison with advanced feature like Processing Fees, GST on Interest, Fixed Rate etc.\nCalculated Using\nAndroid: http://diet.vc/a_aemi\niPhone: http://diet.vc/a_iemi''';
+    Share.share(message, subject: 'EMI Calculation');
   }
 
   @override
@@ -579,11 +567,7 @@ class _RoiState extends State<Roi> {
                           width: buttonWidth,
                           height: buttonHeight,
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Share functionality not implemented')),
-                              );
-                            },
+                            onPressed: _shareResult,
                             icon: const Icon(Icons.share, color: Colors.white, size: 20),
                             label: const Text('Share', style: TextStyle(color: Colors.white, fontSize: 12)),
                             style: ElevatedButton.styleFrom(
